@@ -131,6 +131,66 @@ export function calculateScalePercentage(lengthMeters: number, maxAxisMeters = 1
   return Math.min(100, Math.round((lengthMeters / maxAxisMeters) * 1000) / 10);
 }
 
+export interface SectionChapter {
+  index: number;
+  num: string;
+  id: string;
+  label: string;
+}
+
+export const SECTION_CHAPTERS: SectionChapter[] = [
+  { index: 0, num: '01', id: 'hero', label: 'Canopy' },
+  { index: 1, num: '02', id: 'overview', label: 'Overview' },
+  { index: 2, num: '03', id: 'discovery', label: 'Discovery & History' },
+  { index: 3, num: '04', id: 'anatomy', label: 'Functional Anatomy' },
+  { index: 4, num: '05', id: 'size', label: 'Size Comparison' },
+  { index: 5, num: '06', id: 'diet', label: 'Diet & Hunting' },
+  { index: 6, num: '07', id: 'habitat', label: 'Habitat & Distribution' },
+  { index: 7, num: '08', id: 'classification', label: 'Classification & Species' },
+  { index: 8, num: '09', id: 'growth', label: 'Growth & Extinction' },
+  { index: 9, num: '10', id: 'myths', label: 'Myth vs Reality' },
+  { index: 10, num: '11', id: 'gallery', label: 'Specimen Gallery' },
+  { index: 11, num: '12', id: 'facts', label: 'Fast Facts & Sources' },
+  { index: 12, num: '13', id: 'contact', label: 'Contact' },
+];
+
+export const SECTION_IDS = SECTION_CHAPTERS.map((c) => c.id);
+
+/**
+ * Resolves the target section index for global keyboard deep-dive navigation.
+ * Supports ArrowDown / ArrowRight / PageDown / Space (next),
+ * ArrowUp / ArrowLeft / PageUp / Shift+Space (previous),
+ * Home (first), and End (last).
+ */
+export function resolveNextSectionIndex(
+  currentIndex: number,
+  key: string,
+  shiftKey = false,
+  total = SECTION_CHAPTERS.length
+): number | null {
+  if (total <= 0) return null;
+  const clampedCurrent = Math.max(0, Math.min(total - 1, currentIndex));
+
+  if (key === 'ArrowDown' || key === 'ArrowRight' || key === 'PageDown') {
+    return Math.min(total - 1, clampedCurrent + 1);
+  }
+  if (key === 'ArrowUp' || key === 'ArrowLeft' || key === 'PageUp') {
+    return Math.max(0, clampedCurrent - 1);
+  }
+  if (key === ' ' || key === 'Spacebar' || key === 'Space') {
+    return shiftKey
+      ? Math.max(0, clampedCurrent - 1)
+      : Math.min(total - 1, clampedCurrent + 1);
+  }
+  if (key === 'Home') {
+    return 0;
+  }
+  if (key === 'End') {
+    return total - 1;
+  }
+  return null;
+}
+
 export const HERO_IMAGE_PATH = '/assets/tyrannosaurus-hero.png';
 export const SIDE_IMAGE_PATH = '/assets/tyrannosaurus-side.png';
 

@@ -3,10 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import Lenis from 'lenis';
+import {
+  SECTION_CHAPTERS,
+  resolveNextSectionIndex,
+} from './utils/paleoLogic';
 import { GlobalForestSvgFilters } from './components/ForestAtmosphere';
 import { Hero } from './components/Hero';
 import { MenuOverlay } from './components/MenuOverlay';
@@ -49,6 +53,7 @@ export default function App() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
+  const [activeSectionIndex, setActiveSectionIndex] = useState(0);
   const [roarTrigger, setRoarTrigger] = useState(0);
   const [cursorState, setCursorState] = useState<{
     x: number;
@@ -58,6 +63,8 @@ export default function App() {
   }>({ x: -100, y: -100, hovered: false, visible: false });
 
   const lenisRef = useRef<Lenis | null>(null);
+  const activeSectionIndexRef = useRef<number>(0);
+  const keyboardLockUntilRef = useRef<number>(0);
 
   // Listen for prefers-reduced-motion changes
   useEffect(() => {
@@ -92,20 +99,37 @@ export default function App() {
     return () => cancelAnimationFrame(frame);
   }, [isLoaded]);
 
-  // Lenis smooth scrolling + scroll progress tracking for the Time Gauge (68.0 -> 66.0 MYA)
+  // Lenis smooth scrolling + scroll progress & active chapter tracking
   useEffect(() => {
-    const updateScrollProgress = () => {
+    const updateScrollState = () => {
       const docHeight =
         document.documentElement.scrollHeight - window.innerHeight;
       const progress = docHeight > 0 ? window.scrollY / docHeight : 0;
       setScrollProgress(Math.max(0, Math.min(1, progress)));
+
+      // Skip scroll-derived index overrides while a keyboard jump is in flight
+      if (performance.now() < keyboardLockUntilRef.current) return;
+
+      const viewportTriggerY = window.innerHeight * 0.38;
+      let detectedIdx = 0;
+      for (let i = 0; i < SECTION_CHAPTERS.length; i++) {
+        const el = document.getElementById(SECTION_CHAPTERS[i].id);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          if (rect.top <= viewportTriggerY) {
+            detectedIdx = i;
+          }
+        }
+      }
+      activeSectionIndexRef.current = detectedIdx;
+      setActiveSectionIndex(detectedIdx);
     };
 
-    window.addEventListener('scroll', updateScrollProgress, { passive: true });
-    updateScrollProgress();
+    window.addEventListener('scroll', updateScrollState, { passive: true });
+    updateScrollState();
 
     if (reducedMotion) {
-      return () => window.removeEventListener('scroll', updateScrollProgress);
+      return () => window.removeEventListener('scroll', updateScrollState);
     }
 
     const lenis = new Lenis({
@@ -124,7 +148,7 @@ export default function App() {
     rafId = requestAnimationFrame(raf);
 
     return () => {
-      window.removeEventListener('scroll', updateScrollProgress);
+      window.removeEventListener('scroll', updateScrollState);
       cancelAnimationFrame(rafId);
       lenis.destroy();
       lenisRef.current = null;
@@ -179,30 +203,110 @@ export default function App() {
     return () => window.removeEventListener('mousemove', onMove);
   }, [reducedMotion]);
 
-  const scrollToSection = (sectionId: string) => {
-    if (sectionId === 'hero') {
-      if (lenisRef.current) {
-        lenisRef.current.scrollTo(0);
-      } else {
-        window.scrollTo({ top: 0, behavior: reducedMotion ? 'auto' : 'smooth' });
-      }
-      setScrollProgress(0);
-      setRoarTrigger((c) => c + 1);
-      return;
-    }
+  const jumpToSectionIndex = useCallback(
+    (targetIdx: number) => {
+      const clampedIdx = Math.max(
+        0,
+        Math.min(SECTION_CHAPTERS.length - 1, targetIdx)
+      );
+      const chapter = SECTION_CHAPTERS[clampedIdx];
+      if (!chapter) return;
 
-    const el = document.getElementById(sectionId);
-    if (!el) return;
-    if (lenisRef.current) {
-      lenisRef.current.scrollTo(el);
-    } else {
-      el.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth' });
-    }
-  };
+      activeSectionIndexRef.current = clampedIdx;
+      setActiveSectionIndex(clampedIdx);
+      keyboardLockUntilRef.current = performance.now() + 900;
+
+      if (clampedIdx === 0) {
+        if (lenisRef.current) {
+          lenisRef.current.scrollTo(0);
+        } else {
+          window.scrollTo({
+            top: 0,
+            behavior: reducedMotion ? 'auto' : 'smooth',
+          });
+        }
+        setScrollProgress(0);
+        setRoarTrigger((c) => c + 1);
+        return;
+      }
+
+      const el = document.getElementById(chapter.id);
+      if (!el) return;
+      if (lenisRef.current) {
+        lenisRef.current.scrollTo(el);
+      } else {
+        el.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth' });
+      }
+    },
+    [reducedMotion]
+  );
+
+  const scrollToSection = useCallback(
+    (sectionId: string) => {
+      const idx = SECTION_CHAPTERS.findIndex((c) => c.id === sectionId);
+      if (idx !== -1) {
+        jumpToSectionIndex(idx);
+      }
+    },
+    [jumpToSectionIndex]
+  );
+
+  // Global keyboard navigation: Arrow keys (Up/Down/Left/Right) and Space / Shift+Space
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (menuOpen) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      const target = e.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase() || '';
+
+      // Do not hijack typing inside inputs, textareas, selects, or contenteditable
+      if (
+        tagName === 'input' ||
+        tagName === 'textarea' ||
+        tagName === 'select' ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+
+      // If Space is pressed while a button or link has keyboard focus, allow native click activation
+      const isSpaceKey =
+        e.key === ' ' || e.key === 'Spacebar' || e.code === 'Space';
+      if (
+        isSpaceKey &&
+        (tagName === 'button' ||
+          tagName === 'a' ||
+          target?.getAttribute('role') === 'button')
+      ) {
+        return;
+      }
+
+      // Do not hijack keys if a dialog/lightbox modal is open
+      if (document.querySelector('[role="dialog"]')) {
+        return;
+      }
+
+      const nextIdx = resolveNextSectionIndex(
+        activeSectionIndexRef.current,
+        isSpaceKey ? ' ' : e.key,
+        e.shiftKey,
+        SECTION_CHAPTERS.length
+      );
+
+      if (nextIdx !== null) {
+        e.preventDefault();
+        jumpToSectionIndex(nextIdx);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [menuOpen, jumpToSectionIndex]);
 
   return (
     <div className="relative min-h-screen bg-[#020D07] text-[#F3FFF1]">
-      {/* Global SVG Filters (Duotone, Dappled Canopy, Film Grain) */}
+      {/* Global SVG Filters */}
       <GlobalForestSvgFilters />
 
       {/* 7. Fine Film Grain (about 4% opacity) over everything */}
@@ -257,8 +361,12 @@ export default function App() {
         onSelectSection={scrollToSection}
       />
 
-      {/* Right-Edge Geological Time Gauge (68.0 MYA -> 66.0 MYA K-Pg) */}
-      <TimeGauge scrollProgress={scrollProgress} />
+      {/* Right-Edge Geological Time Gauge & Deep-Dive Chapter Navigation */}
+      <TimeGauge
+        scrollProgress={scrollProgress}
+        activeSectionIndex={activeSectionIndex}
+        onJumpToIndex={jumpToSectionIndex}
+      />
 
       {/* Main Content */}
       <main>

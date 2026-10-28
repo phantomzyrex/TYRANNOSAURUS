@@ -69,3 +69,29 @@ test('scientific datasets match all prompt specifications', () => {
   const tentativeSites = FOSSIL_LOCATIONS.filter((l) => l.status === 'tentative');
   assert.equal(tentativeSites.length, 2); // New Mexico and Texas
 });
+
+test('resolveNextSectionIndex navigates chapters via arrow keys and Space with boundary clamping', async () => {
+  const { resolveNextSectionIndex, SECTION_CHAPTERS } = await import('./paleoLogic');
+  assert.equal(SECTION_CHAPTERS.length, 13);
+
+  // Forward navigation via ArrowDown, ArrowRight, and Space
+  assert.equal(resolveNextSectionIndex(0, 'ArrowDown'), 1);
+  assert.equal(resolveNextSectionIndex(1, 'ArrowRight'), 2);
+  assert.equal(resolveNextSectionIndex(2, ' '), 3);
+
+  // Backward navigation via ArrowUp, ArrowLeft, and Shift+Space
+  assert.equal(resolveNextSectionIndex(3, 'ArrowUp'), 2);
+  assert.equal(resolveNextSectionIndex(2, 'ArrowLeft'), 1);
+  assert.equal(resolveNextSectionIndex(1, ' ', true), 0);
+
+  // Boundary clamping at start (0) and end (12)
+  assert.equal(resolveNextSectionIndex(0, 'ArrowUp'), 0);
+  assert.equal(resolveNextSectionIndex(12, 'ArrowDown'), 12);
+  assert.equal(resolveNextSectionIndex(12, ' '), 12);
+
+  // Home / End and unrelated keys
+  assert.equal(resolveNextSectionIndex(6, 'Home'), 0);
+  assert.equal(resolveNextSectionIndex(6, 'End'), 12);
+  assert.equal(resolveNextSectionIndex(4, 'a'), null);
+});
+
