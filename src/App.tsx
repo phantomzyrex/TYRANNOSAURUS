@@ -133,54 +133,191 @@ export default function App() {
     }
 
     const lenis = new Lenis({
-      duration: 1.1,
+      duration: 1.2,
+      easing: (t: number) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
       smoothWheel: true,
+      wheelMultiplier: 0.95,
+      touchMultiplier: 1.5,
     });
     lenisRef.current = lenis;
 
-    lenis.on('scroll', ScrollTrigger.update);
+    lenis.on('scroll', () => {
+      ScrollTrigger.update();
+      updateScrollState();
+    });
 
-    let rafId = 0;
-    const raf = (time: number) => {
-      lenis.raf(time);
-      rafId = requestAnimationFrame(raf);
+    const updateLenisTicker = (time: number) => {
+      lenis.raf(time * 1000);
     };
-    rafId = requestAnimationFrame(raf);
+    gsap.ticker.add(updateLenisTicker);
+    gsap.ticker.lagSmoothing(0);
 
     return () => {
       window.removeEventListener('scroll', updateScrollState);
-      cancelAnimationFrame(rafId);
+      gsap.ticker.remove(updateLenisTicker);
       lenis.destroy();
       lenisRef.current = null;
     };
   }, [reducedMotion]);
 
-  // GSAP ScrollTrigger section heading reveals
+  // GSAP ScrollTrigger choreography + IntersectionObserver section transitions
   useEffect(() => {
     if (reducedMotion || !isLoaded) return;
 
+    // 1. IntersectionObserver for active section illumination (stroke & atmosphere transition)
+    const sections = Array.from(
+      document.querySelectorAll<HTMLElement>('main section, main footer')
+    );
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.setAttribute('data-section-inview', 'true');
+          } else {
+            entry.target.setAttribute('data-section-inview', 'false');
+          }
+        });
+      },
+      { threshold: 0.12, rootMargin: '0px 0px -10% 0px' }
+    );
+    sections.forEach((sec) => observer.observe(sec));
+
+    // 2. GSAP ScrollTrigger animations (compositor-friendly transform & opacity)
     const ctx = gsap.context(() => {
-      const headings = gsap.utils.toArray<HTMLElement>('section h2');
-      headings.forEach((heading) => {
+      // Outlined section numbers: vertical parallax scrub
+      const sectionNums = gsap.utils.toArray<HTMLElement>('.section-num-outline');
+      sectionNums.forEach((numEl) => {
         gsap.fromTo(
-          heading,
-          { y: 18, opacity: 0.25 },
+          numEl,
+          { yPercent: 18 },
           {
-            y: 0,
-            opacity: 1,
-            duration: 0.7,
-            ease: 'power2.out',
+            yPercent: -16,
+            ease: 'none',
+            immediateRender: false,
             scrollTrigger: {
-              trigger: heading,
-              start: 'top 90%',
-              toggleActions: 'play none none none',
+              trigger: numEl,
+              start: 'top bottom',
+              end: 'bottom top',
+              scrub: 0.6,
             },
           }
         );
       });
+
+      // Section Headings + Eyebrows smooth upward reveal
+      const headings = gsap.utils.toArray<HTMLElement>('section h2, footer h2');
+      headings.forEach((heading) => {
+        const rect = heading.getBoundingClientRect();
+        if (rect.top < window.innerHeight * 0.92) return;
+        gsap.fromTo(
+          heading,
+          { y: 24, opacity: 0.15 },
+          {
+            y: 0,
+            opacity: 1,
+            duration: 0.85,
+            ease: 'power3.out',
+            immediateRender: false,
+            scrollTrigger: {
+              trigger: heading,
+              start: 'top 92%',
+              toggleActions: 'play none none reverse',
+            },
+          }
+        );
+      });
+
+      // Progressive vertical timeline spine draw in Section 03
+      const timelineSpine = document.querySelector<HTMLElement>(
+        '[data-timeline-spine="true"]'
+      );
+      if (timelineSpine) {
+        gsap.fromTo(
+          timelineSpine,
+          { scaleY: 0.08 },
+          {
+            scaleY: 1,
+            ease: 'none',
+            immediateRender: false,
+            scrollTrigger: {
+              trigger: timelineSpine.parentElement || timelineSpine,
+              start: 'top 80%',
+              end: 'bottom 35%',
+              scrub: 0.5,
+            },
+          }
+        );
+      }
+
+      // Staggered editorial cards, timeline milestones, and specimen panels per section
+      const contentSections = gsap.utils.toArray<HTMLElement>(
+        'main section:not(#hero), main footer section'
+      );
+      contentSections.forEach((sectionEl) => {
+        const cards = Array.from(
+          sectionEl.querySelectorAll<HTMLElement>(
+            'article, .space-y-10 > div, .rounded-2xl'
+          )
+        ).filter((el) => {
+          // Avoid nesting duplicate animations when a .rounded-2xl is inside an animated parent
+          return !el.parentElement?.closest('article, .space-y-10 > div, .rounded-2xl');
+        });
+
+        cards.forEach((card, idx) => {
+          const rect = card.getBoundingClientRect();
+          if (rect.top < window.innerHeight * 0.94) return;
+          gsap.fromTo(
+            card,
+            { y: 28, opacity: 0.18, scale: 0.985 },
+            {
+              y: 0,
+              opacity: 1,
+              scale: 1,
+              duration: 0.75,
+              delay: (idx % 3) * 0.07,
+              ease: 'power3.out',
+              immediateRender: false,
+              scrollTrigger: {
+                trigger: card,
+                start: 'top 93%',
+                toggleActions: 'play none none none',
+              },
+            }
+          );
+        });
+      });
+
+      // Monumental Shivang Studios footer signature reveal
+      const footerSignature = document.querySelector<HTMLElement>(
+        '[data-testid="shivang-studios-signature"]'
+      );
+      if (footerSignature) {
+        const rect = footerSignature.getBoundingClientRect();
+        if (rect.top >= window.innerHeight * 0.95) {
+          gsap.fromTo(
+            footerSignature,
+            { y: 32, opacity: 0.2 },
+            {
+              y: 0,
+              opacity: 1,
+              duration: 0.95,
+              ease: 'power3.out',
+              immediateRender: false,
+              scrollTrigger: {
+                trigger: footerSignature,
+                start: 'top 92%',
+                toggleActions: 'play none none none',
+              },
+            }
+          );
+        }
+      }
     });
 
-    return () => ctx.revert();
+    return () => {
+      observer.disconnect();
+      ctx.revert();
+    };
   }, [reducedMotion, isLoaded]);
 
   // Desktop custom cursor ring
@@ -214,11 +351,17 @@ export default function App() {
 
       activeSectionIndexRef.current = clampedIdx;
       setActiveSectionIndex(clampedIdx);
-      keyboardLockUntilRef.current = performance.now() + 900;
+      keyboardLockUntilRef.current = performance.now() + 1150;
+
+      const smoothEase = (t: number) =>
+        Math.min(1, 1.001 - Math.pow(2, -10 * t));
 
       if (clampedIdx === 0) {
         if (lenisRef.current) {
-          lenisRef.current.scrollTo(0);
+          lenisRef.current.scrollTo(0, {
+            duration: 1.15,
+            easing: smoothEase,
+          });
         } else {
           window.scrollTo({
             top: 0,
@@ -233,7 +376,10 @@ export default function App() {
       const el = document.getElementById(chapter.id);
       if (!el) return;
       if (lenisRef.current) {
-        lenisRef.current.scrollTo(el);
+        lenisRef.current.scrollTo(el, {
+          duration: 1.15,
+          easing: smoothEase,
+        });
       } else {
         el.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth' });
       }
@@ -308,6 +454,20 @@ export default function App() {
     <div className="relative min-h-screen bg-[#020D07] text-[#F3FFF1]">
       {/* Global SVG Filters */}
       <GlobalForestSvgFilters />
+
+      {/* Top Canopy Smooth Scroll Progress Bar */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed top-0 left-0 right-0 z-50 h-[2px] bg-[#020D07]/40 overflow-hidden"
+      >
+        <div
+          data-testid="scroll-progress-bar"
+          className="h-full origin-left bg-gradient-to-r from-[#5DBB4B] via-[#B6F36A] to-[#D4FF9A] shadow-[0_0_10px_#B6F36A] transition-transform duration-150 ease-out"
+          style={{
+            transform: `scaleX(${Math.max(0, Math.min(1, scrollProgress))})`,
+          }}
+        />
+      </div>
 
       {/* 7. Fine Film Grain (about 4% opacity) over everything */}
       <div

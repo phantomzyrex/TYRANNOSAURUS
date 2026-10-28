@@ -43,7 +43,8 @@ export const Timeline: React.FC = () => {
           {/* Central / Left Vertical Line */}
           <div
             aria-hidden="true"
-            className="absolute left-2 sm:left-4 md:left-1/2 top-2 bottom-2 w-[1px] -translate-x-1/2 bg-gradient-to-b from-[#B6F36A] via-[#5DBB4B]/60 to-[#1D6B3A]/30"
+            data-timeline-spine="true"
+            className="absolute left-2 sm:left-4 md:left-1/2 top-2 bottom-2 w-[1px] -translate-x-1/2 origin-top bg-gradient-to-b from-[#B6F36A] via-[#5DBB4B]/60 to-[#1D6B3A]/30"
           />
 
           <div className="space-y-10">
