@@ -347,18 +347,6 @@ export const Hero: React.FC<HeroProps> = ({
           <ForestAtmosphereFront parallax={parallax} />
         </div>
 
-        {/* Layer 6: Minimal 3-part Navigation UI */}
-        <Nav
-          onOpenMenu={onOpenMenu}
-          onNavigateSection={(secId) => {
-            if (secId === 'hero') {
-              triggerShakeAndRoar();
-            }
-            onNavigateSection(secId);
-          }}
-          visible={isLoaded}
-        />
-
         {/* Bottom Centre Scroll Prompt */}
         <div className="pointer-events-auto absolute inset-x-0 bottom-4 z-40 flex justify-center">
           <button
@@ -376,6 +364,19 @@ export const Hero: React.FC<HeroProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Layer 6: Fixed 3-part Navigation Header (transparent in Hero, rounded forest bar on scroll) */}
+      <Nav
+        onOpenMenu={onOpenMenu}
+        onNavigateSection={(secId) => {
+          if (secId === 'hero') {
+            triggerShakeAndRoar();
+          }
+          onNavigateSection(secId);
+        }}
+        visible={isLoaded}
+        isScrolled={scrollProgress > 0.003}
+      />
     </section>
   );
 };
